@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FileQueue demo</title>
+    <meta charset="UTF-8">
+    <script src="filequeue.js"></script>
+    <script>
+        let queue = new FileQueue({
+            db: 'db_name',
+            store: 'store_name'
+        });
+
+        function addFilesToQueue() {
+            let files = document.getElementById('input').files;
+            queue.set(files);
+            queue.store((key) => {
+                console.log("File info by key: ", queue.info(key));
+            });
+        }
+
+        function clearQueue() {
+            queue.clear((result) => {
+                console.log(result);
+            });
+        }
+
+    </script>
+
+</head>
+<body>
+<input type="file" id="input" multiple>
+<button onclick="addFilesToQueue()">Save to Queue</button>
+<button onclick="clearQueue()">Clear Queue</button>
+</body>
+</html>
