@@ -1,4 +1,3 @@
-
 function FileQueue($config) {
 
     "use strict";
@@ -6,10 +5,12 @@ function FileQueue($config) {
     const DEBUG = true;
 
     let _this = this;
+    let readerContainer = [];
+
     this.queue = [];
     this.keys = [];
 
-    if ( !('FileReader' in window) ) {
+    if (!('FileReader' in window)) {
         throw Error("FileQueue [error]: FileReader is required!");
     }
 
@@ -31,37 +32,33 @@ function FileQueue($config) {
         });
     }
 
-    this.set = (files) => {
-        for(let i = 0; i < files.length; i++) {
-            let key = Math.random().toString(36).substr(2, 18);
-            _this.queue.push(files[i]);
-            _this.queue[i].key = key;
-            _this.keys.push(key);
-        }
-        DEBUG && console.log("set: ", _this.queue, _this.keys);
-        return _this.keys;
-    };
+    this.add = (key, file) => {
+        _this.queue.push(file);
+        _this.queue[_this.queue.length - 1].key = key;
+        _this.keys.push(key);
+    }
 
-    this.store = (callback) => {
-        for(let i = 0; i < _this.queue.length; i++) {
-            let reader = new window.FileReader();
-            reader.onload = ((...key) => {
-                key = key[0];
-                open().then((db) => {
-                    let transaction = db.transaction($config.store, 'readwrite');
-                    transaction.objectStore($config.store).put(reader.result, key);
-                    typeof callback === 'function' && callback(key);
-                    console.log("store: File with key=" + key + " has been saved to IDB.");
+    this.push = (callback) => {
+        for (let i = 0; i < _this.queue.length; i++) {
+            (function (file, isLast) {
+                var reader = new window.FileReader();
+                reader.onload = ((...key) => {
+                    open().then((db) => {
+                        var transaction = db.transaction($config.store, 'readwrite');
+                        transaction.objectStore($config.store).put(reader.result, file.key);
+                        typeof callback === 'function' && callback(file.key, isLast);
+                        DEBUG && console.log("push: File with key=" + file.key + " has been saved to IDB.");
+                    });
                 });
-            })(_this.queue[i].key);
-            reader.readAsBinaryString(this.queue[i]);
+                reader.readAsBinaryString(_this.queue[i]);
+            })(_this.queue[i], i === _this.queue.length - 1);
         }
     };
 
     this.get = (key, callback) => {
         open().then((db) => {
-            let transaction = db.transaction($config.store, 'readonly');
-            let request = transaction.objectStore($config.store).get(key);
+            var transaction = db.transaction($config.store, 'readonly');
+            var request = transaction.objectStore($config.store).get(key);
             request.onsuccess = () => {
                 callback(request.result);
                 DEBUG && console.log("get: File with key=" + key + " has been recieved from IDB.");
@@ -70,35 +67,44 @@ function FileQueue($config) {
     };
 
     this.info = (key) => {
-        return _this.queue[ _this.keys.indexOf(key) ];
+        return _this.queue[_this.keys.indexOf(key)];
     };
 
     this.getKeys = (callback) => {
         open().then((db) => {
-            let transaction = db.transaction($config.store, 'readonly');
-            let request = transaction.objectStore($config.store).getAllKeys();
+            var transaction = db.transaction($config.store, 'readonly');
+            var request = transaction.objectStore($config.store).getAllKeys();
             request.onsuccess = () => {
-                callback(request.result);
                 DEBUG && console.log("getKeys: ", request.result);
+                callback(request.result);
             };
         });
     };
 
-    this.delete = (key, callback) => {
+    this.pull = (key, callback) => {
         open().then((db) => {
             var transaction = db.transaction($config.store, 'readwrite');
             var request = transaction.objectStore($config.store).delete(key);
             request.onsuccess = () => {
-                typeof callback === 'function' && callback(request.result);
-                DEBUG && console.log("delete: ", key + " has been deleted.");
+                DEBUG && console.log("pull: ", key + " has been deleted.", typeof callback);
+                typeof callback === 'function' && callback();
             };
         });
     };
 
-    this.clear = () => {
+    this.clear = (callback) => {
+        _this.queue = [];
+        _this.keys = [];
         _this.getKeys((keys) => {
-            for(let i = 0; i < keys.length; i++) {
-                _this.delete(keys[i]);
+            if (keys.length === 0) {
+                typeof callback === 'function' && callback();
+            } else {
+                for (let i = 0; i < keys.length; i++) {
+                    let last = (i === keys.length - 1);
+                    (function(key, cb){
+                        _this.pull(keys[i], cb);
+                    })(keys[i], last ? callback : null);
+                }
             }
         });
     };

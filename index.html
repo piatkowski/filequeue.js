@@ -11,16 +11,16 @@
         });
 
         function addFilesToQueue() {
-            let files = document.getElementById('input').files;
-            queue.set(files);
-            queue.store((key) => {
-                console.log("File info by key: ", queue.info(key));
+            let file = document.getElementById('input').files[0];
+            queue.add('key', file);
+            queue.push((key, last) => {
+                console.log("Pushing",key,last);
             });
         }
 
         function clearQueue() {
-            queue.clear((result) => {
-                console.log(result);
+            queue.clear(() => {
+                console.log("Cleared - callback");
             });
         }
 
@@ -28,7 +28,7 @@
 
 </head>
 <body>
-<input type="file" id="input" multiple>
+<input type="file" id="input">
 <button onclick="addFilesToQueue()">Save to Queue</button>
 <button onclick="clearQueue()">Clear Queue</button>
 </body>
