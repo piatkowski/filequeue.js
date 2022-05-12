@@ -2,8 +2,6 @@ function FileQueue($config) {
 
     "use strict";
 
-    const DEBUG = true;
-
     let _this = this;
 
     this.queue = [];
