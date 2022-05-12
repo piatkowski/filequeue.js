@@ -2,10 +2,7 @@ function FileQueue($config) {
 
     "use strict";
 
-    const DEBUG = true;
-
     let _this = this;
-    let readerContainer = [];
 
     this.queue = [];
     this.keys = [];
@@ -21,7 +18,7 @@ function FileQueue($config) {
     }
 
     function open() {
-        return new Promise((resolve, reject) => {
+        return new Promise(resolve => {
             let request = indexedDB.open($config.db);
             request.onsuccess = function () {
                 resolve(request.result);
@@ -32,80 +29,78 @@ function FileQueue($config) {
         });
     }
 
+    function transaction(options) {
+        return new Promise(resolve => {
+            open().then(db => {
+                let transaction = db.transaction($config.store, 'readwrite').objectStore($config.store);
+                let request;
+                switch (options.action) {
+                    case 'put':
+                        request = transaction.put(options.file, options.key);
+                        break;
+                    case 'get':
+                        request = transaction.get(options.key);
+                        break;
+                    case 'getAllKeys':
+                        request = transaction.getAllKeys();
+                        break;
+                    case 'delete':
+                        request = transaction.delete(options.key);
+                        break;
+                }
+                request.onsuccess = resolve;
+            });
+        });
+    }
+
     this.add = (key, file) => {
         _this.queue.push(file);
         _this.queue[_this.queue.length - 1].key = key;
         _this.keys.push(key);
-    }
+    };
 
-    this.push = (callback) => {
+    this.push = () => {
+        let requests = [];
         for (let i = 0; i < _this.queue.length; i++) {
-            (function (file, isLast) {
+            requests.push();
+            requests[i] = new Promise(resolve => {
                 var reader = new window.FileReader();
-                reader.onload = ((...key) => {
-                    open().then((db) => {
-                        var transaction = db.transaction($config.store, 'readwrite');
-                        transaction.objectStore($config.store).put(reader.result, file.key);
-                        typeof callback === 'function' && callback(file.key, isLast);
-                        DEBUG && console.log("push: File with key=" + file.key + " has been saved to IDB.");
-                    });
-                });
+                reader.onload = () => transaction({
+                    action: 'put',
+                    file: reader.result,
+                    key: _this.queue[i].key
+                }).then(resolve);
                 reader.readAsBinaryString(_this.queue[i]);
-            })(_this.queue[i], i === _this.queue.length - 1);
+            });
         }
+        return Promise.all(requests);
     };
 
-    this.get = (key, callback) => {
-        open().then((db) => {
-            var transaction = db.transaction($config.store, 'readonly');
-            var request = transaction.objectStore($config.store).get(key);
-            request.onsuccess = () => {
-                callback(request.result);
-                DEBUG && console.log("get: File with key=" + key + " has been recieved from IDB.");
-            };
-        });
+    this.get = key => {
+        return new Promise(resolve => transaction({action: 'get', key: key}).then(resolve));
     };
 
-    this.info = (key) => {
+    this.getInfo = key => {
         return _this.queue[_this.keys.indexOf(key)];
     };
 
-    this.getKeys = (callback) => {
-        open().then((db) => {
-            var transaction = db.transaction($config.store, 'readonly');
-            var request = transaction.objectStore($config.store).getAllKeys();
-            request.onsuccess = () => {
-                DEBUG && console.log("getKeys: ", request.result);
-                callback(request.result);
-            };
-        });
+    this.getKeys = () => {
+        return new Promise(resolve => transaction({action: 'getAllKeys'}).then(resolve));
     };
 
-    this.pull = (key, callback) => {
-        open().then((db) => {
-            var transaction = db.transaction($config.store, 'readwrite');
-            var request = transaction.objectStore($config.store).delete(key);
-            request.onsuccess = () => {
-                DEBUG && console.log("pull: ", key + " has been deleted.", typeof callback);
-                typeof callback === 'function' && callback();
-            };
-        });
+    this.delete = key => {
+        return new Promise(resolve => transaction({action: 'delete', key: key}).then(resolve));
     };
 
-    this.clear = (callback) => {
-        _this.queue = [];
-        _this.keys = [];
-        _this.getKeys((keys) => {
-            if (keys.length === 0) {
-                typeof callback === 'function' && callback();
-            } else {
-                for (let i = 0; i < keys.length; i++) {
-                    let last = (i === keys.length - 1);
-                    (function(key, cb){
-                        _this.pull(keys[i], cb);
-                    })(keys[i], last ? callback : null);
-                }
-            }
+    this.clear = () => {
+        let requests = [];
+        for(let i = 0; i < _this.queue.length; i++) {
+            requests.push();
+            requests[i] = new Promise(resolve => this.delete(_this.queue[i].key).then(resolve));
+        }
+        return Promise.all(requests).then(() => {
+            _this.queue = [];
+            _this.keys = [];
         });
     };
 }
