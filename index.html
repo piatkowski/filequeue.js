@@ -13,14 +13,14 @@
         function addFilesToQueue() {
             let file = document.getElementById('input').files[0];
             queue.add('key', file);
-            queue.push((key, last) => {
-                console.log("Pushing",key,last);
+            queue.push().then(() => {
+                console.log("All files saved to IDB!");
             });
         }
 
         function clearQueue() {
-            queue.clear(() => {
-                console.log("Cleared - callback");
+            queue.clear().then(() => {
+                console.log("Cleared!");
             });
         }
 
